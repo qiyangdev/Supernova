@@ -1,0 +1,51 @@
+{
+  "originHash" : "4724b4389982e552fc817ebff3047726788c6ecc3a248c10b10952d5a8accc27",
+  "pins" : [
+    {
+      "identity" : "openai",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/MacPaw/OpenAI.git",
+      "state" : {
+        "revision" : "fe89b3ba8793a21fc6c034058c394d4100d419e3",
+        "version" : "0.6.1"
+      }
+    },
+    {
+      "identity" : "swift-http-types",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-http-types",
+      "state" : {
+        "revision" : "bff4b6903cdc99dda49649dd52f46c11cfd3ed50",
+        "version" : "1.8.0"
+      }
+    },
+    {
+      "identity" : "swift-openapi-runtime",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-openapi-runtime",
+      "state" : {
+        "revision" : "b9ebb3f06f1dac717156a04f0919ad444cbcf8f5",
+        "version" : "1.13.4"
+      }
+    },
+    {
+      "identity" : "swiftui-introspect",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/siteline/swiftui-introspect.git",
+      "state" : {
+        "revision" : "7f76fe19415a60ce28493c5ec67b8da629f27a44",
+        "version" : "27.1.0"
+      }
+    },
+    {
+      "identity" : "thinkingorbs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/haplollc/ThinkingOrbs.git",
+      "state" : {
+        "revision" : "e2c07bbdec4db797fb302300ef0159b1806a909f",
+        "version" : "1.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
