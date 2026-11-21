@@ -170,14 +170,15 @@ struct MainView: View {
         editors[thread.id] = ConversationEditor(
             messages: thread.transcript,
             draft: thread.draft,
+            lastContextUsage: thread.lastContextUsage,
             onDraftChange: { draft in
                 guard thread.modelContext != nil, !thread.isDeleted else { return }
                 thread.draft = draft
                 save()
             },
-            onTurnCommitted: { prompt, reply in
+            onTurnCommitted: { turn, usage in
                 guard thread.modelContext != nil, !thread.isDeleted else { return }
-                thread.appendTurn(prompt: prompt, reply: reply)
+                thread.saveTurn(turn, usage: usage)
                 save()
             }
         )

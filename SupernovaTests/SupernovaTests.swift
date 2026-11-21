@@ -38,8 +38,11 @@ struct SupernovaTests {
 
             let editor = ConversationEditor(
                 onDraftChange: { first.draft = $0 },
-                onTurnCommitted: { first.appendTurn(prompt: $0, reply: $1) },
-                respond: { _, append in append(markdown) }
+                onTurnCommitted: { first.saveTurn($0, usage: $1) },
+                respond: { _, append, reportUsage in
+                    append(markdown)
+                    reportUsage(210_000)
+                }
             )
             editor.updateText("First prompt")
             #expect(first.draft == "First prompt")
@@ -60,14 +63,21 @@ struct SupernovaTests {
         #expect(second.transcript.isEmpty)
         #expect(second.draft == "Second draft")
 
+        #expect(first.lastContextUsage == ContextWindowUsage(model: .gpt6_sol, totalTokens: 210_000))
+        #expect(second.lastContextUsage == nil)
         var request: CreateModelResponseQuery?
-        let editor = ConversationEditor(messages: first.transcript, draft: first.draft) { query, append in
+        let editor = ConversationEditor(
+            messages: first.transcript, draft: first.draft, lastContextUsage: first.lastContextUsage
+        ) { query, append, _ in
             request = query
             append("Done")
         }
+        #expect(editor.lastContextUsage?.fraction == 0.2)
         #expect(editor.text == "First prompt\n\nSaved heading\n\nSaved reply\n\nFirst draft")
         let task = try #require(editor.send(model: .gpt6_sol, effort: .low))
         await task.value
+        #expect(request?.serviceTier == .defaultTier)
+        #expect(editor.lastContextUsage == first.lastContextUsage)
         #expect(request?.input == .inputItemList([
             .inputMessage(.init(role: .user, content: .textInput("First prompt"))),
             .inputMessage(.init(role: .assistant, content: .textInput(markdown))),
@@ -86,7 +96,7 @@ struct SupernovaTests {
     {
         weak var observedEditor: ConversationEditor?
         var requests: [CreateModelResponseQuery] = []
-        let editor = ConversationEditor { query, append in
+        let editor = ConversationEditor { query, append, _ in
             requests.append(query)
             if requests.count == 1 {
                 #expect(observedEditor?.isWaitingForReply == true)
@@ -161,7 +171,7 @@ struct SupernovaTests {
             + "```swift\nlet value = 1\n```\n\n[Link](https://example.com)\n````"
         var requests: [CreateModelResponseQuery] = []
         weak var observedEditor: ConversationEditor?
-        let editor = ConversationEditor { query, append in
+        let editor = ConversationEditor { query, append, _ in
             requests.append(query)
             if requests.count == 1 {
                 append(openingChunk)
@@ -323,10 +333,112 @@ struct SupernovaTests {
     }
 
     @MainActor
+    @Test func interruptedReplyRetriesInPlaceWithoutChangingLaterMessagesOrDraft() async throws {
+        let container = try ModelContainer(
+            for: ConversationThread.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let thread = ConversationThread(title: "Retries")
+        container.mainContext.insert(thread)
+        var requests: [CreateModelResponseQuery] = []
+        let editor = ConversationEditor(
+            onDraftChange: { thread.draft = $0 },
+            onTurnCommitted: { thread.saveTurn($0, usage: $1) }
+        ) { query, append, reportUsage in
+            requests.append(query)
+            switch requests.count {
+            case 1:
+                append("Partial reply")
+                reportUsage(200)
+                throw ConversationEditor.Failure.interrupted
+            case 2:
+                append("Later reply")
+            case 3:
+                throw ConversationEditor.Failure.requestFailed
+            default:
+                append("Recovered reply")
+                reportUsage(350)
+            }
+        }
+        editor.updateText("Original prompt")
+        let first = try #require(editor.send(model: .gpt6_sol, effort: .low, fastMode: true))
+        await first.value
+        #expect(requests[0].serviceTier == .priority)
+        let fastBody = try JSONSerialization.jsonObject(with: JSONEncoder().encode(requests[0]))
+        #expect((fastBody as? [String: Any])?["service_tier"] as? String == "priority")
+        #expect(thread.lastContextUsage == ContextWindowUsage(model: .gpt6_sol, totalTokens: 200))
+        #expect(thread.transcript.last?.replyStatus == .interrupted)
+        #expect(editor.text.contains("Partial reply"))
+
+        editor.updateText(editor.text + "Later prompt")
+        let later = try #require(editor.send(model: .gpt5_6_terra, effort: .low, fastMode: true))
+        await later.value
+        #expect(requests[1].serviceTier == .defaultTier)
+        #expect(requests[1].input == .inputItemList([
+            .inputMessage(.init(role: .user, content: .textInput("Later prompt"))),
+        ]))
+        editor.updateText(editor.text + "Keep this draft")
+
+        let failedRetry = try #require(editor.retry(position: 0, model: .gpt6_sol, effort: .low))
+        await failedRetry.value
+        #expect(thread.transcript[1].replyStatus == .failed)
+        #expect(thread.transcript[1].text == "Partial reply")
+        #expect(thread.lastContextUsage == ContextWindowUsage(model: .gpt6_sol, totalTokens: 200))
+        let retry = try #require(editor.retry(position: 0, model: .gpt6_astra, effort: .low, fastMode: true))
+        await retry.value
+        #expect(requests[3].serviceTier == .priority)
+        #expect(editor.lastContextUsage == ContextWindowUsage(model: .gpt6_astra, totalTokens: 350))
+        #expect(thread.lastContextUsage == editor.lastContextUsage)
+        #expect(requests[3].input == .inputItemList([
+            .inputMessage(.init(role: .user, content: .textInput("Original prompt"))),
+        ]))
+        #expect(thread.transcript.map(\.text) == [
+            "Original prompt", "Recovered reply", "Later prompt", "Later reply",
+        ])
+        #expect(thread.transcript[1].replyStatus == .completed)
+        #expect(thread.draft == "Keep this draft")
+        #expect(editor.text == "Original prompt\n\nRecovered reply\n\nLater prompt\n\nLater reply\n\nKeep this draft")
+    }
+
+    @MainActor
+    @Test func stoppingBeforeTheFirstChunkKeepsASingleRetryableTurn() async throws {
+        let started = AsyncStream<Void>.makeStream()
+        var saved: [ConversationTurn] = []
+        var attempts = 0
+        let editor = ConversationEditor(onTurnCommitted: { turn, _ in saved.append(turn) }) { _, append, _ in
+            attempts += 1
+            if attempts == 1 {
+                started.continuation.yield(())
+                try await Task.sleep(for: .seconds(30))
+            } else {
+                append("Retried reply")
+            }
+        }
+
+        editor.updateText("Stop this reply")
+        let first = try #require(editor.send(model: .gpt6_sol, effort: .low))
+        var iterator = started.stream.makeAsyncIterator()
+        await iterator.next()
+        started.continuation.finish()
+        editor.stop()
+        await first.value
+        #expect(saved.count == 1)
+        #expect(saved.first?.status == .stopped)
+        #expect(editor.text == "Stop this reply\n\n\u{FFFC}\n\n")
+        #expect(!editor.canSend)
+
+        let retry = try #require(editor.retry(position: 0, model: .gpt6_sol, effort: .low))
+        await retry.value
+        #expect(saved.map(\.position) == [0, 0])
+        #expect(saved.last?.status == .completed)
+        #expect(editor.text == "Stop this reply\n\nRetried reply\n\n")
+    }
+
+    @MainActor
     @Test func conversationKeepsTheDraftWhenTheRequestFailsBeforeReturningText()
         async throws
     {
-        let editor = ConversationEditor { _, _ in
+        let editor = ConversationEditor { _, _, _ in
             throw ConversationEditor.Failure.missingAPIKey
         }
         editor.updateText("  Keep this draft  ")

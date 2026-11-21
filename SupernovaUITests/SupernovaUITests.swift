@@ -242,7 +242,7 @@ final class SupernovaUITests: XCTestCase {
         let usage = app.descendants(matching: .any)["contextWindowUsage"]
         let fastMode = app.descendants(matching: .any)["fastMode"]
         XCTAssertTrue(usage.waitForExistence(timeout: 5))
-        XCTAssertEqual(usage.value as? String, "20%")
+        XCTAssertEqual(usage.value as? String, "No reported usage")
         XCTAssertTrue(fastMode.isHittable)
         let horizontalDistance = fastMode.frame.midX - usage.frame.midX
         let verticalDistance = fastMode.frame.midY - usage.frame.midY
@@ -275,6 +275,11 @@ final class SupernovaUITests: XCTestCase {
         XCTAssertTrue(model.waitForExistence(timeout: 5))
         XCTAssertTrue(model.isSelected)
         XCTAssertFalse(defaultModel.isSelected)
+
+        let unsupportedModel = app.buttons["gpt-5.6-terra"]
+        XCTAssertTrue(unsupportedModel.waitForExistence(timeout: 5))
+        unsupportedModel.tap()
+        XCTAssertFalse(app.descendants(matching: .any)["fastMode"].isEnabled)
     }
 
     @MainActor

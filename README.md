@@ -2,9 +2,9 @@
 
 Supernova is a native SwiftUI app for drafting and continuing conversations with OpenAI. Replies stream into the editor alongside your text, with Markdown tables and images rendered inline.
 
-![Supernova on iPhone Duo showing a real OpenAI reply with a Markdown table in the conversation editor](docs/images/supernova-iphone-duo.png)
+![Supernova on an unfolded iPhone Duo, showing a sketch-walk itinerary as an inline Markdown table](docs/images/supernova-iphone-duo.png)
 
-*An actual OpenAI Responses API reply captured in Supernova on the iPhone Duo simulator.*
+*A live OpenAI Responses API reply on the iPhone Duo simulator, framed with `frames-cli`.*
 
 ## What you can do
 
@@ -12,7 +12,11 @@ Supernova is a native SwiftUI app for drafting and continuing conversations with
 - Send multi-turn requests and stop a streaming reply. Choose the model and configure its reasoning effort from the editor toolbar.
 - Read Markdown headings, lists, links, quotes, and code, with native inline views for tables and HTTPS images.
 
-Fast Mode and the context-usage ring are currently UI prototypes. The app targets iOS, macOS, and visionOS. The iPhone Duo simulator is the primary UI test destination.
+The context ring shows the latest token total reported by the Responses API for each conversation, relative to the context window of the model used for that request. The ring starts empty until a request reports usage.
+
+Fast Mode requests faster processing at [OpenAI’s Fast Mode rates](https://developers.openai.com/api/docs/guides/fast-mode). It starts off and is available only for supported models. The setting applies to both new messages and retries.
+
+The app targets iOS, macOS, and visionOS. The iPhone Duo simulator is the primary UI test destination.
 
 ## Get started
 

@@ -19,6 +19,12 @@ struct ConversationDetailView: View {
 
     @FocusState private var isInputFocused: Bool
 
+    private var fastModeHelp: Text {
+        currentModel.supportsFastMode
+            ? Text("Request faster responses at a higher per-token price.")
+            : Text("Fast Mode is unavailable for this model.")
+    }
+
     private var sessionConfigButtonsPlacement: ToolbarItemPlacement {
         #if os(macOS)
             .automatic
@@ -74,9 +80,21 @@ struct ConversationDetailView: View {
             conversationTextView.setWaitingForReply(isWaiting)
         }
         .onChange(of: editor.document) { _, _ in
-            if editor.isResponding && !editor.isWaitingForReply {
+            if editor.isResponding && !editor.isWaitingForReply && editor.followsReplyAtEnd {
                 conversationTextView.followReply()
             }
+        }
+        .onChange(of: editor.retryRequest) { _, position in
+            guard let position else { return }
+            editor.retry(
+                position: position,
+                model: currentModel,
+                effort: currentThinkingEffort,
+                fastMode: currentFastModeEnabled
+            )
+        }
+        .onChange(of: currentModel) { _, model in
+            if !model.supportsFastMode { currentFastModeEnabled = false }
         }
         .onChange(of: editor.isResponding, initial: true) { _, isResponding in
             if isResponding {
@@ -85,6 +103,8 @@ struct ConversationDetailView: View {
             }
             conversationTextView.setResponding(isResponding)
             if !isResponding {
+                defer { shouldRestoreInputFocus = false }
+                guard editor.followsReplyAtEnd else { return }
                 editorSelection = AttributedTextSelection(
                     insertionPoint: editor.document.endIndex,
                     typingAttributes: AttributeContainer()
@@ -94,7 +114,6 @@ struct ConversationDetailView: View {
                 {
                     isInputFocused = true
                 }
-                shouldRestoreInputFocus = false
             }
         }
         .alert(
@@ -102,28 +121,12 @@ struct ConversationDetailView: View {
             isPresented: Binding(
                 get: { editor.failure != nil },
                 set: { if !$0 { editor.failure = nil } }
-            ),
-            presenting: editor.failure
-        ) { failure in
-            if failure == .missingAPIKey {
-                Button("Open Config") { isSettingsPresented = true }
-                Button("Cancel", role: .cancel) {}
-            } else {
-                Button("OK", role: .cancel) {}
-            }
-        } message: { failure in
-            switch failure {
-            case .missingAPIKey:
-                Text("Add your OpenAI API key in Config to send messages.")
-            case .interrupted:
-                Text("The response ended before it finished.")
-            case .noReply:
-                Text("OpenAI returned no text. Try sending the message again.")
-            case .requestFailed:
-                Text(
-                    "OpenAI couldn’t complete the request. Check your connection and API settings."
-                )
-            }
+            )
+        ) {
+            Button("Open Config") { isSettingsPresented = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Add your OpenAI API key in Config to send messages.")
         }
         .toolbar {
             ToolbarItem {
@@ -136,11 +139,14 @@ struct ConversationDetailView: View {
             }
 
             ToolbarItemGroup(placement: sessionConfigButtonsPlacement) {
-                ContextWindowUsageRing(usage: 0.2)
+                ContextWindowUsageRing(usage: editor.lastContextUsage)
 
                 Toggle(isOn: $currentFastModeEnabled) {
                     Label("Fast Mode", systemImage: "hare")
                 }
+                .disabled(!currentModel.supportsFastMode)
+                .help(fastModeHelp)
+                .accessibilityHint(fastModeHelp)
                 .accessibilityIdentifier("fastMode")
 
                 Menu {
@@ -183,11 +189,19 @@ struct ConversationDetailView: View {
                 }
                 .accessibilityValue(Text(currentModel))
                 .accessibilityIdentifier("modelPicker")
-
-                sendButton
             }
             #if os(iOS)
                 .axisBehavior(.verticalPreferred)
+            #endif
+
+            ToolbarItem(placement: sessionConfigButtonsPlacement) {
+                sendButton
+            }
+            #if os(iOS)
+                .visibilityPriority(.high)
+                .axisBehavior(.verticalPreferred)
+            #elseif os(macOS)
+                .visibilityPriority(.high)
             #endif
         }
     }
@@ -202,7 +216,8 @@ struct ConversationDetailView: View {
                 } else {
                     editor.send(
                         model: currentModel,
-                        effort: currentThinkingEffort
+                        effort: currentThinkingEffort,
+                        fastMode: currentFastModeEnabled
                     )
                 }
             } label: {
@@ -222,18 +237,28 @@ struct ConversationDetailView: View {
 }
 
 private struct ContextWindowUsageRing: View {
-    let usage: Double
+    let usage: ContextWindowUsage?
+
+    private var usageDescription: Text {
+        guard let usage else { return Text("No reported usage") }
+        let tokens = usage.totalTokens.formatted()
+        guard let limit = usage.model.contextWindowSize,
+              let fraction = usage.fraction
+        else {
+            return Text("\(tokens) tokens, \(usage.model). Context window unavailable.")
+        }
+        let percent = fraction.formatted(.percent.precision(.fractionLength(0...2)))
+        return Text("\(percent), \(tokens) of \(limit.formatted()) tokens, \(usage.model)")
+    }
 
     var body: some View {
-        let fraction = min(max(usage, 0), 1)
-
         ZStack {
             Circle()
                 .strokeBorder(.secondary, lineWidth: 1.5)
 
             Circle()
                 .inset(by: 0.75)
-                .trim(from: 0, to: fraction)
+                .trim(from: 0, to: min(max(usage?.fraction ?? 0, 0), 1))
                 .stroke(
                     .primary,
                     style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
@@ -242,10 +267,9 @@ private struct ContextWindowUsageRing: View {
         }
         .frame(width: 20, height: 20)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Context window used")
-        .accessibilityValue(
-            fraction.formatted(.percent.precision(.fractionLength(0)))
-        )
+        .help(Text("Last reported context usage\n\(usageDescription)"))
+        .accessibilityLabel("Last reported context usage")
+        .accessibilityValue(usageDescription)
         .accessibilityIdentifier("contextWindowUsage")
     }
 }
