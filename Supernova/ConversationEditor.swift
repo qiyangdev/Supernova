@@ -24,10 +24,35 @@ final class ConversationEditor {
     private var committedText = AttributedString()
     private var history: [InputItem] = []
     private let respond: Responder
+    private let onDraftChange: (String) -> Void
+    private let onTurnCommitted: (String, String) -> Void
     @ObservationIgnored private var responseTask: Task<Void, Never>?
 
-    init(respond: @escaping Responder = ConversationEditor.streamResponse) {
+    init(
+        messages: [ConversationMessage] = [],
+        draft: String = "",
+        onDraftChange: @escaping (String) -> Void = { _ in },
+        onTurnCommitted: @escaping (String, String) -> Void = { _, _ in },
+        respond: @escaping Responder = ConversationEditor.streamResponse
+    ) {
+        self.onDraftChange = onDraftChange
+        self.onTurnCommitted = onTurnCommitted
         self.respond = respond
+
+        for message in messages {
+            switch message.role {
+            case .user:
+                history.append(.inputMessage(.init(role: .user, content: .textInput(message.text))))
+                committedText += AttributedString(message.text)
+            case .assistant:
+                history.append(.inputMessage(.init(role: .assistant, content: .textInput(message.text))))
+                committedText += MarkdownReply.render(message.text)
+            case nil:
+                continue
+            }
+            committedText += AttributedString("\n\n")
+        }
+        document = committedText + AttributedString(draft)
     }
 
     var text: String { String(document.characters) }
@@ -48,11 +73,9 @@ final class ConversationEditor {
             newText.hasPrefix(String(committedText.characters)),
             newText != text
         else { return }
-        document =
-            committedText
-            + AttributedString(
-                String(newText.dropFirst(committedText.characters.count))
-            )
+        let draft = String(newText.dropFirst(committedText.characters.count))
+        document = committedText + AttributedString(draft)
+        onDraftChange(draft)
     }
 
     @discardableResult
@@ -136,6 +159,7 @@ final class ConversationEditor {
                 committedText =
                     replyPrefix + formattedReply + AttributedString("\n\n")
                 document = committedText
+                onTurnCommitted(prompt, reply)
             }
         }
         responseTask = task

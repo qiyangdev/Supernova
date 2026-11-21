@@ -7,6 +7,7 @@
 
 import Foundation
 import OpenAI
+import SwiftData
 import SwiftUI
 import Testing
 #if canImport(UIKit)
@@ -18,6 +19,66 @@ import AppKit
 @testable import Supernova
 
 struct SupernovaTests {
+
+    @MainActor
+    @Test func conversationsRestoreTheirDraftsAndRawMarkdownFromDisk() async throws {
+        let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configuration = ModelConfiguration(url: directory.appending(path: "Conversations.store"))
+        let markdown = "# Saved heading\n\n**Saved reply**"
+
+        do {
+            let container = try ModelContainer(for: ConversationThread.self, configurations: configuration)
+            let context = container.mainContext
+            let first = ConversationThread(title: "First")
+            let second = ConversationThread(title: "Second")
+            context.insert(first)
+            context.insert(second)
+
+            let editor = ConversationEditor(
+                onDraftChange: { first.draft = $0 },
+                onTurnCommitted: { first.appendTurn(prompt: $0, reply: $1) },
+                respond: { _, append in append(markdown) }
+            )
+            editor.updateText("First prompt")
+            #expect(first.draft == "First prompt")
+            let task = try #require(editor.send(model: .gpt6_sol, effort: .low))
+            await task.value
+            #expect(first.draft.isEmpty)
+            editor.updateText(editor.text + "First draft")
+            second.draft = "Second draft"
+            try context.save()
+        }
+
+        let reopened = try ModelContainer(for: ConversationThread.self, configurations: configuration)
+        let context = reopened.mainContext
+        let threads = try context.fetch(FetchDescriptor<ConversationThread>())
+        let first = try #require(threads.first { $0.title == "First" })
+        let second = try #require(threads.first { $0.title == "Second" })
+        #expect(first.transcript.map(\.text) == ["First prompt", markdown])
+        #expect(second.transcript.isEmpty)
+        #expect(second.draft == "Second draft")
+
+        var request: CreateModelResponseQuery?
+        let editor = ConversationEditor(messages: first.transcript, draft: first.draft) { query, append in
+            request = query
+            append("Done")
+        }
+        #expect(editor.text == "First prompt\n\nSaved heading\n\nSaved reply\n\nFirst draft")
+        let task = try #require(editor.send(model: .gpt6_sol, effort: .low))
+        await task.value
+        #expect(request?.input == .inputItemList([
+            .inputMessage(.init(role: .user, content: .textInput("First prompt"))),
+            .inputMessage(.init(role: .assistant, content: .textInput(markdown))),
+            .inputMessage(.init(role: .user, content: .textInput("First draft"))),
+        ]))
+
+        context.delete(first)
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<ConversationMessage>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<ConversationThread>()) == 1)
+    }
 
     @MainActor
     @Test func conversationAppendsEachDeltaAndReusesTheCompletedTurn()

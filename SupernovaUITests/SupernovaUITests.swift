@@ -9,6 +9,25 @@ import XCTest
 
 final class SupernovaUITests: XCTestCase {
 
+    private let storeID = UUID().uuidString
+
+    @MainActor
+    private func testApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["SUPERNOVA_UI_TEST_STORE"] = storeID
+        return app
+    }
+
+    @MainActor
+    private func launchWithThread(_ app: XCUIApplication) {
+        app.launch()
+        let sidebar = app.buttons["newThread"]
+        let create = sidebar.isHittable ? sidebar : app.buttons["newThreadFromEmptyState"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+        XCTAssertTrue(app.textViews["conversationEditor"].waitForExistence(timeout: 5))
+    }
+
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
 
@@ -23,10 +42,9 @@ final class SupernovaUITests: XCTestCase {
     }
 
     @MainActor
-    func testMessageEditorAcceptsTypingWithoutATapOnLaunch() {
-        let app = XCUIApplication()
-        app.launch()
-
+    func testMessageEditorAcceptsTypingWithoutATapAfterCreatingAThread() {
+        let app = testApp()
+        launchWithThread(app)
         let editor = app.textViews["conversationEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         let message = "Hello Supernova"
@@ -36,10 +54,10 @@ final class SupernovaUITests: XCTestCase {
 
     @MainActor
     func testSendingWithoutAnAPIKeyKeepsDraftAndOffersConfig() {
-        let app = XCUIApplication()
+        let app = testApp()
         app.launchEnvironment["SUPERNOVA_UI_TEST_KEYCHAIN_NAMESPACE"] =
             UUID().uuidString
-        app.launch()
+        launchWithThread(app)
 
         let editor = app.textViews["conversationEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -60,26 +78,77 @@ final class SupernovaUITests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingSidebarConversationShowsItsDetail() {
-        let app = XCUIApplication()
+    func testThreadsKeepSeparateDraftsAcrossRelaunchAndCanBeDeleted() {
+        let app = testApp()
+        launchWithThread(app)
+        let editor = app.textViews["conversationEditor"]
+        let actions = app.buttons["threadActions"]
+
+        func renameThread(adding suffix: String) -> String {
+            XCTAssertTrue(actions.waitForExistence(timeout: 5))
+            actions.tap()
+            app.buttons["Rename"].tap()
+            let alert = app.alerts["Rename Thread"]
+            let field = alert.textFields.firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            let originalTitle = field.value as? String ?? ""
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+            field.typeText(suffix)
+            let title = originalTitle + suffix
+            XCTAssertEqual(field.value as? String, title)
+            alert.buttons["Save"].tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            return title
+        }
+
+        func showSidebar() {
+            if !app.buttons["newThread"].isHittable {
+                actions.tap()
+                app.buttons["Show Threads"].tap()
+            }
+            XCTAssertTrue(app.buttons["newThread"].waitForExistence(timeout: 5))
+        }
+
+        func selectThread(_ title: String) {
+            showSidebar()
+            let link = app.buttons.matching(identifier: title).firstMatch
+            if link.isHittable {
+                link.tap()
+            } else {
+                app.staticTexts.matching(identifier: title).firstMatch.tap()
+            }
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+        }
+
+        let firstThread = renameThread(adding: " A")
+        editor.typeText("First draft")
+        showSidebar()
+        app.buttons["newThread"].tap()
+        let secondThread = renameThread(adding: " B")
+        editor.typeText("Second draft")
+
+        selectThread(firstThread)
+        XCTAssertEqual(editor.value as? String, "First draft")
+        app.terminate()
         app.launch()
+        selectThread(secondThread)
+        XCTAssertEqual(editor.value as? String, "Second draft")
 
-        let title = "Introduction to Epsilon"
-        let row = app.descendants(matching: .any)["introductionToEpsilon"]
-            .firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        row.tap()
-
-        XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textViews.firstMatch.isHittable)
+        actions.tap()
+        app.buttons["Delete"].tap()
+        let confirm = app.alerts["Delete Thread?"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.buttons["Delete"].tap()
+        XCTAssertTrue(app.navigationBars[firstThread].waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "First draft")
     }
 
     @MainActor
     func testConfigSavesAPIKeyWhenTappingOutsideAndPersistsClear() {
-        let app = XCUIApplication()
+        let app = testApp()
         app.launchEnvironment["SUPERNOVA_UI_TEST_KEYCHAIN_NAMESPACE"] =
             UUID().uuidString
-        app.launch()
+        launchWithThread(app)
         let cancel = app.buttons["cancelSettings"]
 
         func openSettings() -> XCUIElement {
@@ -163,8 +232,8 @@ final class SupernovaUITests: XCTestCase {
 
     @MainActor
     func testContextWindowUsageAppearsBeforeFastMode() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = testApp()
+        launchWithThread(app)
 
         let usage = app.descendants(matching: .any)["contextWindowUsage"]
         let fastMode = app.descendants(matching: .any)["fastMode"]
@@ -182,8 +251,8 @@ final class SupernovaUITests: XCTestCase {
 
     @MainActor
     func testModelPickerShowsAndChangesSelection() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = testApp()
+        launchWithThread(app)
 
         let picker = app.buttons["modelPicker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
@@ -206,8 +275,8 @@ final class SupernovaUITests: XCTestCase {
 
     @MainActor
     func testThinkingEffortCanSwitchBetweenNoneAndLow() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = testApp()
+        launchWithThread(app)
 
         let menu = app.descendants(matching: .any)["thinkingEffortMenu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
@@ -226,7 +295,7 @@ final class SupernovaUITests: XCTestCase {
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            testApp().launch()
         }
     }
 }
