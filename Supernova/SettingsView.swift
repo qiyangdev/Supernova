@@ -34,7 +34,7 @@ struct SettingsView: View {
                             .textInputAutocapitalization(.never)
                             .introspect(
                                 .secureField,
-                                on: .iOS(.v27),
+                                on: .iOS(.v26, .v27),
                                 .visionOS(.v27)
                             ) { textField in
                                 textField.clearButtonMode = .always

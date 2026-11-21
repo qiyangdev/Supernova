@@ -6,7 +6,7 @@
 
 ## Build, Test, and Development Commands
 
-Use Xcode with SDKs for the project's 27.2 deployment targets. The app targets iOS, macOS, and visionOS. Run commands from the repository root.
+Use Xcode 27.2 to build for iOS 26.0, macOS 27.2, and visionOS 27.2. Run commands from the repository root.
 
 ```sh
 xcodebuild -project Supernova.xcodeproj -scheme Supernova -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

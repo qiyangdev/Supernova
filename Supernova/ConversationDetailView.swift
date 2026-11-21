@@ -50,7 +50,7 @@ struct ConversationDetailView: View {
             )
         #endif
         #if os(iOS) || os(visionOS)
-            .introspect(.textEditor, on: .iOS(.v27), .visionOS(.v27)) {
+            .introspect(.textEditor, on: .iOS(.v26, .v27), .visionOS(.v27)) {
                 textView in
                 #if os(iOS)
                     textView.textContainer.lineFragmentPadding = 0
@@ -68,6 +68,23 @@ struct ConversationDetailView: View {
         #endif
         .focused($isInputFocused)
         .accessibilityIdentifier("conversationEditor")
+        #if os(iOS)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if #unavailable(iOS 27.1) {
+                    HStack(spacing: 12) {
+                        Spacer(minLength: 0)
+                        sessionControls
+                            .buttonStyle(.glass)
+                            .toggleStyle(.button)
+                        sendButton
+                    }
+                    .labelStyle(.iconOnly)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                    .background(.bar)
+                }
+            }
+        #endif
         .task {
             guard !editor.isResponding else { return }
             editorSelection = AttributedTextSelection(
@@ -138,71 +155,86 @@ struct ConversationDetailView: View {
                 .accessibilityIdentifier("configButton")
             }
 
-            ToolbarItemGroup(placement: sessionConfigButtonsPlacement) {
-                ContextWindowUsageRing(usage: editor.lastContextUsage)
-
-                Toggle(isOn: $currentFastModeEnabled) {
-                    Label("Fast Mode", systemImage: "hare")
-                }
-                .disabled(!currentModel.supportsFastMode)
-                .help(fastModeHelp)
-                .accessibilityHint(fastModeHelp)
-                .accessibilityIdentifier("fastMode")
-
-                Menu {
-                    Picker(
-                        "Select Thinking Effort",
-                        selection: $currentThinkingEffort
-                    ) {
-                        ForEach(
-                            ModelSpec.ReasoningEffort.allCases,
-                            id: \.self
-                        ) {
-                            effort in
-                            Text(effort.rawValue)
-                                .tag(effort)
-                        }
-                    }
-                } label: {
-                    let isThinkingEnabled =
-                        currentThinkingEffort != .none
-                    Toggle(
-                        "Thinking Effort",
-                        systemImage: "brain",
-                        isOn: .constant(isThinkingEnabled)
-                    )
-                    .allowsHitTesting(false)
-                }
-                .accessibilityIdentifier("thinkingEffortMenu")
-
-                Menu {
-                    Picker("Select Model", selection: $currentModel) {
-                        ForEach(Self.availableModels, id: \.self) {
-                            model in
-                            Text(model)
-                                .tag(model)
-                        }
-                    }
-                } label: {
-                    Label("Select Model", systemImage: "cpu")
-                    Text(currentModel)
-                }
-                .accessibilityValue(Text(currentModel))
-                .accessibilityIdentifier("modelPicker")
-            }
             #if os(iOS)
-                .axisBehavior(.verticalPreferred)
-            #endif
-
-            ToolbarItem(placement: sessionConfigButtonsPlacement) {
-                sendButton
-            }
-            #if os(iOS)
-                .visibilityPriority(.high)
-                .axisBehavior(.verticalPreferred)
+                if #available(iOS 27.1, *) {
+                    sessionControlsItem.axisBehavior(.verticalPreferred)
+                    sendItem
+                        .visibilityPriority(.high)
+                        .axisBehavior(.verticalPreferred)
+                }
             #elseif os(macOS)
-                .visibilityPriority(.high)
+                sessionControlsItem
+                sendItem.visibilityPriority(.high)
+            #else
+                sessionControlsItem
+                sendItem
             #endif
+        }
+    }
+
+    private var sessionControlsItem: ToolbarItemGroup<some View> {
+        ToolbarItemGroup(placement: sessionConfigButtonsPlacement) {
+            sessionControls
+        }
+    }
+
+    @ViewBuilder
+    private var sessionControls: some View {
+        ContextWindowUsageRing(usage: editor.lastContextUsage)
+
+        Toggle(isOn: $currentFastModeEnabled) {
+            Label("Fast Mode", systemImage: "hare")
+        }
+        .disabled(!currentModel.supportsFastMode)
+        .help(fastModeHelp)
+        .accessibilityHint(fastModeHelp)
+        .accessibilityIdentifier("fastMode")
+
+        Menu {
+            Picker(
+                "Select Thinking Effort",
+                selection: $currentThinkingEffort
+            ) {
+                ForEach(
+                    ModelSpec.ReasoningEffort.allCases,
+                    id: \.self
+                ) {
+                    effort in
+                    Text(effort.rawValue)
+                        .tag(effort)
+                }
+            }
+        } label: {
+            let isThinkingEnabled =
+                currentThinkingEffort != .none
+            Toggle(
+                "Thinking Effort",
+                systemImage: "brain",
+                isOn: .constant(isThinkingEnabled)
+            )
+            .allowsHitTesting(false)
+        }
+        .accessibilityIdentifier("thinkingEffortMenu")
+
+        Menu {
+            Picker("Select Model", selection: $currentModel) {
+                ForEach(Self.availableModels, id: \.self) {
+                    model in
+                    Text(model)
+                        .tag(model)
+                }
+            }
+        } label: {
+            Label("Select Model", systemImage: "cpu")
+            Text(currentModel)
+        }
+        .accessibilityValue(Text(currentModel))
+        .accessibilityIdentifier("modelPicker")
+    }
+
+    private var sendItem: ToolbarItem<(), some View> {
+        ToolbarItem(placement: sessionConfigButtonsPlacement) {
+            sendButton
         }
     }
 

@@ -20,7 +20,7 @@ The app targets iOS, macOS, and visionOS. The iPhone Duo simulator is the primar
 
 ## Get started
 
-You need Xcode 27.2 with the SDK for your destination, Swift Package Manager access to the declared dependencies, and an OpenAI API key with access to your chosen model. The deployment targets are iOS 27.2, macOS 27.2, and visionOS 27.2.
+You need Xcode 27.2 with the SDK for your destination, Swift Package Manager access to the declared dependencies, and an OpenAI API key with access to your chosen model. The deployment targets are iOS 26.0, macOS 27.2, and visionOS 27.2.
 
 1. Clone the repository and open `Supernova.xcodeproj` in Xcode.
 2. Select the **Supernova** scheme and a compatible simulator. If running on a physical device, select your own team and use a unique bundle identifier in **Signing & Capabilities**.

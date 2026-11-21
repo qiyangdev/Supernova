@@ -157,6 +157,16 @@ final class SupernovaUITests: XCTestCase {
 
         func openSettings() -> XCUIElement {
             let config = app.buttons["configButton"]
+            if !config.isHittable {
+                // A compact split view can reopen on the thread list.
+                let thread = app.buttons["New Thread"].firstMatch
+                if thread.isHittable {
+                    thread.tap()
+                } else {
+                    let title = app.staticTexts["New Thread"].firstMatch
+                    if title.isHittable { title.tap() }
+                }
+            }
             XCTAssertTrue(config.waitForExistence(timeout: 5))
             config.tap()
 
@@ -239,8 +249,8 @@ final class SupernovaUITests: XCTestCase {
         let app = testApp()
         launchWithThread(app)
 
-        let usage = app.descendants(matching: .any)["contextWindowUsage"]
-        let fastMode = app.descendants(matching: .any)["fastMode"]
+        let usage = app.descendants(matching: .any).matching(identifier: "contextWindowUsage").firstMatch
+        let fastMode = app.descendants(matching: .any).matching(identifier: "fastMode").firstMatch
         XCTAssertTrue(usage.waitForExistence(timeout: 5))
         XCTAssertEqual(usage.value as? String, "No reported usage")
         XCTAssertTrue(fastMode.isHittable)
