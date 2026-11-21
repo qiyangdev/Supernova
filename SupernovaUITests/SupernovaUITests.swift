@@ -22,6 +22,10 @@ final class SupernovaUITests: XCTestCase {
     private func launchWithThread(_ app: XCUIApplication) {
         app.launch()
         let sidebar = app.buttons["newThread"]
+        let showSidebar = app.buttons["Show Sidebar"]
+        if !sidebar.isHittable, showSidebar.isHittable {
+            showSidebar.tap()
+        }
         let create = sidebar.isHittable ? sidebar : app.buttons["newThreadFromEmptyState"]
         XCTAssertTrue(create.waitForExistence(timeout: 5))
         create.tap()

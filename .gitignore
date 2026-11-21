@@ -1,0 +1,15 @@
+.DS_Store
+
+# Xcode and SwiftPM
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.build/
+*.xcresult/
+
+# Local configuration and signing files
+.env
+.env.*
+!.env.example
+*.mobileprovision
+*.p12
