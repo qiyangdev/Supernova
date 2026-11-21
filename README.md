@@ -2,9 +2,9 @@
 
 Supernova is a native SwiftUI app for drafting and continuing conversations with OpenAI. Replies stream into the editor alongside your text, with Markdown tables and images rendered inline.
 
-![Supernova on an unfolded iPhone Duo, showing a sketch-walk itinerary as an inline Markdown table](docs/images/supernova-iphone-duo.png)
+[![Supernova on an unfolded iPhone Duo, showing a sketch-walk itinerary as an inline Markdown table](docs/images/supernova-iphone-duo.png)](docs/videos/supernova-iphone-duo.mp4)
 
-*A live OpenAI Responses API reply on the iPhone Duo simulator, framed with `frames-cli`.*
+[Watch the 17-second demo](docs/videos/supernova-iphone-duo.mp4) to see a live OpenAI reply stream into an inline Markdown table on the iPhone Duo simulator. The recording was framed with [Frames CLI](https://github.com/viticci/frames-cli).
 
 ## What you can do
 
